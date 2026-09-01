@@ -9,26 +9,29 @@ public class Main {
         boolean sair = false;
         while (!sair) {
             System.out.println("\n=== MENU PRINCIPAL ===");
-            System.out.println("1. CRUD Sequencial");
-            System.out.println("2. Ordenacao Externa");
-            System.out.println("3. Sair");
+            System.out.println("1. Carregar CSV");
+            System.out.println("2. CRUD Sequencial");
+            System.out.println("3. Ordenacao Externa");
+            System.out.println("4. Sair");
             System.out.print("> ");
             
             int opcao = scanner.nextInt();
             scanner.nextLine();
             
             if (opcao == 1) {
-                menuCRUD(caminhoBinario, scanner);
+                System.out.println("Carregando CSV...");
+                CsvLoader.carregarCSV("disney_movies_dataset.csv", caminhoBinario);
             } else if (opcao == 2) {
-                testeOrdenacao(caminhoBinario, scanner);
+                menuCRUD(caminhoBinario, scanner);
             } else if (opcao == 3) {
+                testeOrdenacao(caminhoBinario, scanner);
+            } else if (opcao == 4) {
                 System.out.println("Ate logo!");
                 sair = true;
             } else {
                 System.out.println("Opcao invalida!");
             }
         }
-        
     }
     
     private static void menuCRUD(String caminhoBinario, Scanner scanner) throws Exception {
@@ -36,6 +39,7 @@ public class Main {
         
         boolean voltar = false;
         while (!voltar) {
+            limparTela();
             System.out.println("\n=== CRUD ===");
             System.out.println("1. Ler por ID");
             System.out.println("2. Criar novo");
@@ -133,4 +137,12 @@ public class Main {
         System.out.println("\nTempo total: " + duracao + "ms");
         System.out.println("Arquivo ordenado criado: " + caminhoTemp);
     }
+
+    private static void limparTela() {
+    try {
+        new ProcessBuilder("cmd", "/c", "cls").inheritIO().start().waitFor();
+    } catch (Exception e) {
+
+    }
+}
 }
