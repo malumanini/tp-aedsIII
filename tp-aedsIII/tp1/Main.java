@@ -1,6 +1,7 @@
 import java.time.LocalDate;
 import java.util.Scanner;
 
+// Classe principal com o menu interativo do sistema, rodado pelo terminal
 public class Main {
     public static void main(String[] args) throws Exception {
         String caminhoBinario = "filmes.dat";
@@ -16,7 +17,7 @@ public class Main {
             System.out.print("> ");
             
             int opcao = scanner.nextInt();
-            scanner.nextLine();
+            scanner.nextLine(); // consome a quebra de linha deixada pelo nextInt
             
             if (opcao == 1) {
                 System.out.println("Carregando CSV...");
@@ -34,10 +35,11 @@ public class Main {
         }
     }
     
+    // menu com as operacoes de CRUD sobre o arquivo binario
     private static void menuCRUD(String caminhoBinario, Scanner scanner) throws Exception {
         FilmeDAO dao = new FilmeDAO(caminhoBinario);
         
-        limparTela(); 
+        limparTela(); // limpa a tela so na entrada do CRUD, nao a cada operacao (senao apagaria os resultados)
         
         boolean voltar = false;
         while (!voltar) {
@@ -64,6 +66,7 @@ public class Main {
                         System.out.println("Nao encontrado");
                     }
                 } else if (op == 2) {
+                    // pega os dados do novo filme com o usuario; o id fica 0 porque quem gera o id de verdade e o DAO
                     System.out.print("Titulo: ");
                     String titulo = scanner.nextLine();
                     System.out.print("Franchise: ");
@@ -82,6 +85,7 @@ public class Main {
                     int novoId = dao.criarFilme(novo);
                     System.out.println("Criado com ID: " + novoId);
                 } else if (op == 3) {
+                    // le o filme atual, altera o titulo e manda de volta pro DAO atualizar
                     System.out.print("ID para atualizar: ");
                     int id = scanner.nextInt();
                     scanner.nextLine();
@@ -112,12 +116,14 @@ public class Main {
                     System.out.println("Opcao invalida");
                 }
             } catch (Exception e) {
+                // captura qualquer erro de uma operacao especifica sem derrubar o menu inteiro
                 System.out.println("Erro: " + e.getMessage());
                 e.printStackTrace();
             }
         }
     }
     
+    // pede os parametros da ordenacao externa e roda, medindo o tempo total gasto
     private static void testeOrdenacao(String caminhoBinario, Scanner scanner) throws Exception {
         System.out.println("\n=== ORDENACAO EXTERNA ===");
         System.out.print("Max registros por lote (padrao 100): ");
@@ -139,6 +145,7 @@ public class Main {
         System.out.println("Arquivo ordenado criado: " + caminhoTemp);
     }
 
+    // limpa o terminal (so funciona no Windows, por causa do comando "cls")
     private static void limparTela() {
         try {
             new ProcessBuilder("cmd", "/c", "cls").inheritIO().start().waitFor();
