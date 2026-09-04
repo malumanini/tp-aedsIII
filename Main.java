@@ -37,9 +37,10 @@ public class Main {
     private static void menuCRUD(String caminhoBinario, Scanner scanner) throws Exception {
         FilmeDAO dao = new FilmeDAO(caminhoBinario);
         
+        limparTela(); 
+        
         boolean voltar = false;
         while (!voltar) {
-            limparTela();
             System.out.println("\n=== CRUD ===");
             System.out.println("1. Ler por ID");
             System.out.println("2. Criar novo");
