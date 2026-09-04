@@ -1,6 +1,9 @@
 import java.io.*;
 import java.time.LocalDate;
 
+// Entidade que representa um filme. Cobre os 5 tipos de campo exigidos pelo TP:
+// movieId = string de tamanho fixo, movieTitle = string de tamanho variavel,
+// releaseDate = data, genres = lista com separador, runtimeMinutes = inteiro
 public class Filme {
     private int id;
     private String movieId;
@@ -28,6 +31,7 @@ public class Filme {
         this.country = country;
     }
 
+    // getters e setters padrao de cada atributo
     public int getId() { return id; }
     public void setId(int id) { this.id = id; }
 
@@ -70,6 +74,9 @@ public class Filme {
                 '}';
     }
 
+    // serializa o filme para um vetor de bytes, para ser gravado no arquivo binario.
+    // writeUTF ja grava o tamanho de cada string antes do conteudo, entao nao
+    // precisamos controlar isso manualmente ao ler de volta
     public byte[] toByteArray() throws IOException {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         DataOutputStream dos = new DataOutputStream(baos);
@@ -78,7 +85,7 @@ public class Filme {
         dos.writeUTF(movieId);
         dos.writeUTF(movieTitle);
         dos.writeUTF(franchise);
-        dos.writeLong(releaseDate.toEpochDay());
+        dos.writeLong(releaseDate.toEpochDay()); // data guardada como numero de dias desde 1970
         dos.writeUTF(genres);
         dos.writeInt(runtimeMinutes);
         dos.writeUTF(rating);
@@ -91,6 +98,8 @@ public class Filme {
         return resultado;
     }
 
+    // reconstroi um Filme a partir do vetor de bytes salvo no arquivo.
+    // a ordem de leitura precisa ser exatamente igual a ordem de escrita do toByteArray
     public static Filme fromByteArray(byte[] data) throws IOException {
         ByteArrayInputStream bais = new ByteArrayInputStream(data);
         DataInputStream dis = new DataInputStream(bais);
@@ -110,5 +119,4 @@ public class Filme {
         dis.close();
         return filme;
     }
-
 }
