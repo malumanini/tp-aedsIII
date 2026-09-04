@@ -100,7 +100,6 @@ public class ExternalSort {
     private List<File> intercalarRodada(List<File> runsAtuais) throws IOException {
         List<File> novosRuns = new ArrayList<>();
 
-        // agrupa os runs de "ways" em "ways" e funde cada grupo
         for (int i = 0; i < runsAtuais.size(); i += ways) {
             int fim = Math.min(i + ways, runsAtuais.size());
             List<File> grupo = runsAtuais.subList(i, fim);

@@ -139,10 +139,10 @@ public class Main {
     }
 
     private static void limparTela() {
-    try {
-        new ProcessBuilder("cmd", "/c", "cls").inheritIO().start().waitFor();
-    } catch (Exception e) {
+        try {
+            new ProcessBuilder("cmd", "/c", "cls").inheritIO().start().waitFor();
+        } catch (Exception e) {
 
+        }
     }
-}
 }
