@@ -4,13 +4,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
-// Classe responsavel pelas operacoes de CRUD no arquivo binario sequencial.
-// A partir do TP2, o DAO tambem mantem os indices coerentes com o arquivo de dados:
-//   - indiceBPlus:    Arvore B+ (chave = id)
-//   - indiceHash:     Hashing Estendido (chave = id)
-//   - indiceGeneros / indiceFranchise: Listas Invertidas (chave = termo textual)
-// Toda insercao/atualizacao/remocao reflete em todos os indices que estiverem presentes
-// (cada um pode ser null, caso o CRUD esteja rodando sem aquele indice em especifico).
+
 public class FilmeDAO {
     private String caminhoArquivo;
     private BPlusTree indiceBPlus;
@@ -23,7 +17,7 @@ public class FilmeDAO {
         this(caminhoArquivo, null, null, null, null);
     }
 
-    // construtor so com a Arvore B+ (mantido por compatibilidade com o que ja existia)
+    // construtor so com a Arvore B+ (mantido por compatibilidade)
     public FilmeDAO(String caminhoArquivo, BPlusTree indiceBPlus) {
         this(caminhoArquivo, indiceBPlus, null, null, null);
     }
@@ -38,7 +32,10 @@ public class FilmeDAO {
         this.indiceFranchise = indiceFranchise;
     }
 
-    // busca um filme pelo id, percorrendo o arquivo sequencialmente do inicio ao fim (O(n))
+    // ================= LEITURA =================
+
+    // busca um filme pelo id, percorrendo o arquivo sequencialmente do inicio ao fim (O(n)).
+    // usada pelo modo "CRUD Sequencial" e como base de comparacao com as buscas indexadas.
     public Filme lerPorId(int id) throws IOException {
         try (RandomAccessFile raf = new RandomAccessFile(caminhoArquivo, "r")) {
             raf.seek(4); // pula o cabecalho (ultimo id usado)
@@ -51,14 +48,14 @@ public class FilmeDAO {
 
                 Filme filme = Filme.fromByteArray(dados);
                 if (filme.getId() == id && lapide == 0) {
-                    return filme; // achou o registro certo e ele esta valido
+                    return filme;
                 }
             }
         }
-        return null; // nao encontrou (ou o registro estava deletado)
+        return null;
     }
 
-    // le um registro na posicao informada (usado pelas duas buscas indexadas por id abaixo)
+    // le um registro na posicao informada (usado pelas buscas indexadas por id)
     private Filme lerNaPosicao(long posicao) throws IOException {
         try (RandomAccessFile raf = new RandomAccessFile(caminhoArquivo, "r")) {
             raf.seek(posicao);
@@ -101,19 +98,16 @@ public class FilmeDAO {
         return resultado;
     }
 
-    // busca todos os filmes de um genero, usando a Lista Invertida de generos
     public List<Filme> buscarPorGenero(String genero) throws IOException {
         if (indiceGeneros == null) return new ArrayList<>();
         return resolverIds(indiceGeneros.buscar(genero));
     }
 
-    // busca todos os filmes de uma franquia, usando a Lista Invertida de franchise
     public List<Filme> buscarPorFranchise(String franchise) throws IOException {
         if (indiceFranchise == null) return new ArrayList<>();
         return resolverIds(indiceFranchise.buscar(franchise));
     }
 
-    // combina as duas Listas Invertidas numa mesma pesquisa (intersecao: genero E franchise)
     public List<Filme> buscarPorGeneroEFranchise(String genero, String franchise) throws IOException {
         if (indiceGeneros == null || indiceFranchise == null) return new ArrayList<>();
         List<Integer> idsGenero = indiceGeneros.buscar(genero);
@@ -122,10 +116,11 @@ public class FilmeDAO {
         return resolverIds(idsCombinados);
     }
 
-    // separa a string de generos (separados por "|") em termos individuais, prontos pra indexar
     private List<String> generosComoTermos(Filme filme) {
         return Arrays.asList(filme.getGenres().split("\\|"));
     }
+
+    // ================= CREATE =================
 
     // cria um novo filme, gerando o id automaticamente a partir do cabecalho
     public int criarFilme(Filme filme) throws IOException {
@@ -138,18 +133,15 @@ public class FilmeDAO {
             filme.setId(novoId);
             byte[] dados = filme.toByteArray();
 
-            // o novo registro sempre e escrito no final do arquivo
             raf.seek(raf.length());
-            long posicaoRegistro = raf.getFilePointer(); // posicao que vai para os indices
-            raf.writeByte(0); // lapide 0 = valido
+            long posicaoRegistro = raf.getFilePointer();
+            raf.writeByte(0);
             raf.writeInt(dados.length);
             raf.write(dados);
 
-            // atualiza o cabecalho com o novo ultimo id usado
             raf.seek(0);
             raf.writeInt(novoId);
 
-            // mantem todos os indices presentes coerentes com o arquivo de dados
             if (indiceBPlus != null) {
                 indiceBPlus.inserir(novoId, posicaoRegistro);
                 System.out.println("[indice] Arvore B+ atualizada (insercao)");
@@ -171,8 +163,77 @@ public class FilmeDAO {
         }
     }
 
-    // atualiza um filme existente, procurando pelo id
+    // ================= UPDATE =================
+
+    // ponto de entrada: usa o indice disponivel pra LOCALIZAR o registro (O(log n)/O(1)) quando
+    // possivel; sem nenhum indice de id, cai para a varredura sequencial original do TP1.
     public boolean atualizarFilme(Filme filmeAtualizado) throws IOException {
+        if (indiceBPlus == null && indiceHash == null) {
+            return atualizarFilmeSequencial(filmeAtualizado);
+        }
+        return atualizarFilmeViaIndice(filmeAtualizado);
+    }
+
+    // localiza o registro usando a Arvore B+ (preferida) ou o Hashing Estendido, evitando a
+    // varredura completa do arquivo. So os bytes do proprio registro sao lidos/escritos.
+    private boolean atualizarFilmeViaIndice(Filme filmeAtualizado) throws IOException {
+        long posicaoLapide;
+        if (indiceBPlus != null) {
+            posicaoLapide = indiceBPlus.buscar(filmeAtualizado.getId());
+            System.out.println("[indice] localizando registro via Arvore B+ para atualizacao");
+        } else {
+            posicaoLapide = indiceHash.buscar(filmeAtualizado.getId());
+            System.out.println("[indice] localizando registro via Hashing Estendido para atualizacao");
+        }
+
+        if (posicaoLapide == -1) return false; // id nao encontrado no indice
+
+        try (RandomAccessFile raf = new RandomAccessFile(caminhoArquivo, "rw")) {
+            raf.seek(posicaoLapide);
+            byte lapideAntiga = raf.readByte();
+            int tamanhoAntigo = raf.readInt();
+            byte[] dadosAntigos = new byte[tamanhoAntigo];
+            raf.readFully(dadosAntigos);
+
+            if (lapideAntiga == 1) return false; // registro ja foi deletado
+
+            Filme filmeAntigo = Filme.fromByteArray(dadosAntigos);
+            byte[] dadosNovos = filmeAtualizado.toByteArray();
+
+            atualizarListasInvertidas(filmeAntigo, filmeAtualizado);
+
+            if (dadosNovos.length == tamanhoAntigo) {
+                // mesmo tamanho -> sobrescreve no lugar; posicao nao muda, B+/Hash continuam corretos
+                raf.seek(posicaoLapide + 5);
+                raf.write(dadosNovos);
+                return true;
+            } else {
+                // tamanho mudou -> registro antigo vira lapide, novo vai pro final do arquivo
+                raf.seek(posicaoLapide);
+                raf.writeByte(1);
+
+                raf.seek(raf.length());
+                long novaPosicao = raf.getFilePointer();
+                raf.writeByte(0);
+                raf.writeInt(dadosNovos.length);
+                raf.write(dadosNovos);
+
+                if (indiceBPlus != null) {
+                    indiceBPlus.inserir(filmeAtualizado.getId(), novaPosicao);
+                    System.out.println("[indice] Arvore B+ atualizada (nova posicao apos atualizacao)");
+                }
+                if (indiceHash != null) {
+                    indiceHash.inserir(filmeAtualizado.getId(), novaPosicao);
+                    System.out.println("[indice] Hashing Estendido atualizado (nova posicao apos atualizacao)");
+                }
+                return true;
+            }
+        }
+    }
+
+    // versao original do TP1: varre o arquivo inteiro procurando o id (usada so quando nao
+    // ha nenhum indice de id disponivel, ex: modo "CRUD Sequencial" do menu)
+    private boolean atualizarFilmeSequencial(Filme filmeAtualizado) throws IOException {
         try (RandomAccessFile raf = new RandomAccessFile(caminhoArquivo, "rw")) {
             raf.seek(4);
 
@@ -184,68 +245,92 @@ public class FilmeDAO {
                 if (lapideAntiga == 0) {
                     byte[] dadosAntigos = new byte[tamanhoAntigo];
                     raf.readFully(dadosAntigos);
-
                     Filme filmeAntigo = Filme.fromByteArray(dadosAntigos);
 
                     if (filmeAntigo.getId() == filmeAtualizado.getId()) {
                         byte[] dadosNovos = filmeAtualizado.toByteArray();
+                        atualizarListasInvertidas(filmeAntigo, filmeAtualizado);
 
-                        // as Listas Invertidas dependem do CONTEUDO (genero/franchise), nao da posicao,
-                        // entao precisam ser atualizadas nos dois casos abaixo caso o filme tenha mudado
-                        // de genero/franchise: remove os termos antigos e insere os novos
-                        if (indiceGeneros != null) {
-                            indiceGeneros.remover(filmeAtualizado.getId(), generosComoTermos(filmeAntigo));
-                            indiceGeneros.inserir(filmeAtualizado.getId(), generosComoTermos(filmeAtualizado));
-                            System.out.println("[indice] Lista Invertida de generos atualizada (atualizacao)");
-                        }
-                        if (indiceFranchise != null) {
-                            indiceFranchise.remover(filmeAtualizado.getId(), Collections.singletonList(filmeAntigo.getFranchise()));
-                            indiceFranchise.inserir(filmeAtualizado.getId(), Collections.singletonList(filmeAtualizado.getFranchise()));
-                            System.out.println("[indice] Lista Invertida de franchise atualizada (atualizacao)");
-                        }
-
-                        // caso 1: o registro novo ocupa o mesmo espaco do antigo -> sobrescreve no lugar
-                        // a posicao do registro nao muda, entao Arvore B+ e Hash nao precisam ser tocados
                         if (dadosNovos.length == tamanhoAntigo) {
-                            raf.seek(posicaoLapide + 5); // pula lapide (1 byte) + tamanho (4 bytes)
+                            raf.seek(posicaoLapide + 5);
                             raf.write(dadosNovos);
                             return true;
-                        }
-                        // caso 2: o tamanho mudou -> marca o registro antigo como deletado
-                        // e escreve o novo no final do arquivo (a posicao muda -> Arvore B+ e Hash precisam ser atualizados)
-                        else {
+                        } else {
                             raf.seek(posicaoLapide);
                             raf.writeByte(1);
-
                             raf.seek(raf.length());
-                            long novaPosicao = raf.getFilePointer();
                             raf.writeByte(0);
                             raf.writeInt(dadosNovos.length);
                             raf.write(dadosNovos);
-
-                            if (indiceBPlus != null) {
-                                // inserir() com uma chave ja existente atualiza a posicao no indice
-                                indiceBPlus.inserir(filmeAtualizado.getId(), novaPosicao);
-                                System.out.println("[indice] Arvore B+ atualizada (atualizacao - posicao mudou)");
-                            }
-                            if (indiceHash != null) {
-                                indiceHash.inserir(filmeAtualizado.getId(), novaPosicao);
-                                System.out.println("[indice] Hashing Estendido atualizado (atualizacao - posicao mudou)");
-                            }
                             return true;
                         }
                     }
                 } else {
-                    // registro ja deletado: so pula os bytes dele sem processar
                     raf.skipBytes(tamanhoAntigo);
                 }
             }
         }
-        return false; // id nao encontrado
+        return false;
     }
 
-    // marca um filme como deletado (lapide = 1), sem remover fisicamente do arquivo
+    // as Listas Invertidas dependem do CONTEUDO (genero/franchise), nao da posicao no arquivo,
+    // entao sao atualizadas do mesmo jeito nos dois caminhos (via indice ou sequencial)
+    private void atualizarListasInvertidas(Filme filmeAntigo, Filme filmeAtualizado) throws IOException {
+        if (indiceGeneros != null) {
+            indiceGeneros.remover(filmeAtualizado.getId(), generosComoTermos(filmeAntigo));
+            indiceGeneros.inserir(filmeAtualizado.getId(), generosComoTermos(filmeAtualizado));
+            System.out.println("[indice] Lista Invertida de generos atualizada (atualizacao)");
+        }
+        if (indiceFranchise != null) {
+            indiceFranchise.remover(filmeAtualizado.getId(), Collections.singletonList(filmeAntigo.getFranchise()));
+            indiceFranchise.inserir(filmeAtualizado.getId(), Collections.singletonList(filmeAtualizado.getFranchise()));
+            System.out.println("[indice] Lista Invertida de franchise atualizada (atualizacao)");
+        }
+    }
+
+    // ================= DELETE =================
+
+    // ponto de entrada: usa o indice disponivel pra LOCALIZAR o registro; sem indice de id,
+    // cai para a varredura sequencial original do TP1.
     public boolean deletarFilme(int id) throws IOException {
+        if (indiceBPlus == null && indiceHash == null) {
+            return deletarFilmeSequencial(id);
+        }
+        return deletarFilmeViaIndice(id);
+    }
+
+    private boolean deletarFilmeViaIndice(int id) throws IOException {
+        long posicaoLapide;
+        if (indiceBPlus != null) {
+            posicaoLapide = indiceBPlus.buscar(id);
+            System.out.println("[indice] localizando registro via Arvore B+ para remocao");
+        } else {
+            posicaoLapide = indiceHash.buscar(id);
+            System.out.println("[indice] localizando registro via Hashing Estendido para remocao");
+        }
+
+        if (posicaoLapide == -1) return false;
+
+        try (RandomAccessFile raf = new RandomAccessFile(caminhoArquivo, "rw")) {
+            raf.seek(posicaoLapide);
+            byte lapide = raf.readByte();
+            if (lapide == 1) return false; // ja estava deletado
+
+            int tamanho = raf.readInt();
+            byte[] dados = new byte[tamanho];
+            raf.readFully(dados);
+            Filme filme = Filme.fromByteArray(dados);
+
+            raf.seek(posicaoLapide);
+            raf.writeByte(1); // marca a lapide como deletado
+
+            removerDosIndices(id, filme);
+            return true;
+        }
+    }
+
+    // versao original do TP1: varre o arquivo inteiro procurando o id
+    private boolean deletarFilmeSequencial(int id) throws IOException {
         try (RandomAccessFile raf = new RandomAccessFile(caminhoArquivo, "rw")) {
             raf.seek(4);
 
@@ -260,30 +345,33 @@ public class FilmeDAO {
                     Filme filme = Filme.fromByteArray(dados);
                     if (filme.getId() == id) {
                         raf.seek(posicaoLapide);
-                        raf.writeByte(1); // marca a lapide como deletado
-
-                        if (indiceBPlus != null) {
-                            indiceBPlus.remover(id);
-                            System.out.println("[indice] Arvore B+ atualizada (remocao)");
-                        }
-                        if (indiceHash != null) {
-                            indiceHash.remover(id);
-                            System.out.println("[indice] Hashing Estendido atualizado (remocao)");
-                        }
-                        if (indiceGeneros != null) {
-                            indiceGeneros.remover(id, generosComoTermos(filme));
-                            System.out.println("[indice] Lista Invertida de generos atualizada (remocao)");
-                        }
-                        if (indiceFranchise != null) {
-                            indiceFranchise.remover(id, Collections.singletonList(filme.getFranchise()));
-                            System.out.println("[indice] Lista Invertida de franchise atualizada (remocao)");
-                        }
+                        raf.writeByte(1);
+                        removerDosIndices(id, filme);
                         return true;
                     }
                 }
             }
         }
         return false;
+    }
+
+    private void removerDosIndices(int id, Filme filme) throws IOException {
+        if (indiceBPlus != null) {
+            indiceBPlus.remover(id);
+            System.out.println("[indice] Arvore B+ atualizada (remocao)");
+        }
+        if (indiceHash != null) {
+            indiceHash.remover(id);
+            System.out.println("[indice] Hashing Estendido atualizado (remocao)");
+        }
+        if (indiceGeneros != null) {
+            indiceGeneros.remover(id, generosComoTermos(filme));
+            System.out.println("[indice] Lista Invertida de generos atualizada (remocao)");
+        }
+        if (indiceFranchise != null) {
+            indiceFranchise.remover(id, Collections.singletonList(filme.getFranchise()));
+            System.out.println("[indice] Lista Invertida de franchise atualizada (remocao)");
+        }
     }
 
     // percorre o arquivo inteiro e imprime todos os filmes validos (nao deletados)
